@@ -1,7 +1,6 @@
 import torch
 import tqdm
 import transformers
-from transformers import AutoModelForCausalLM, LlamaForCausalLM, MistralForCausalLM
 from transformers import AutoModelForCausalLM, LlamaForCausalLM, MistralForCausalLM,AutoTokenizer, AutoModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
@@ -13,7 +12,7 @@ import torch.nn as nn
 
 def get_hidden_states(
     model: Union[MistralForCausalLM, LlamaForCausalLM],
-@@ -115,6 +117,7 @@ def get_gate_params(
+	@@ -115,6 +117,7 @@ def get_gate_params(
         embed = model_ref.lazy_loader(lazy_unpickle=lazy_unpickle).get_tensor(
             "model.embed_tokens.weight"
         )
@@ -21,7 +20,7 @@ def get_hidden_states(
 
         def _do_it(tokenized):
             return get_cheap_embedding(
-@@ -140,6 +143,18 @@ def _do_it(tokenized):
+	@@ -140,6 +143,18 @@ def _do_it(tokenized):
             return get_hidden_states(
                 model, tokenized=tokenized, average=mode == "hidden_avg"
             )
@@ -40,16 +39,15 @@ def get_hidden_states(
 
     gate_vecs = []
     for expert in tqdm.tqdm(experts, desc="expert prompts"):
-@@ -148,7 +163,7 @@ def _do_it(tokenized):
+	@@ -148,7 +163,7 @@ def _do_it(tokenized):
             hidden_states -= _do_it(
                 tokenize_prompts(expert.negative_prompts, tokenizer)
             )
-
     
         hidden_states /= hidden_states.norm(p=2, dim=-1, keepdim=True).clamp(min=1e-8)
         gate_vecs.append(hidden_states)
     gate_vecs = torch.stack(gate_vecs, dim=0)  # (num_expert, num_layer, hidden_size)
-@@ -187,3 +202,45 @@ def warn_degenerate_gates(gate_vecs: torch.Tensor, threshold: float = 5.0):
+	@@ -187,3 +202,45 @@ def warn_degenerate_gates(gate_vecs: torch.Tensor, threshold: float = 5.0):
             "- your prompts may be too similar."
         )
         logging.warning("One or more experts will be underutilized in your model.")
