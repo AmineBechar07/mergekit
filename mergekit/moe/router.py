@@ -140,6 +140,43 @@ def get_gate_params(
             return get_hidden_states(
                 model, tokenized=tokenized, average=mode == "hidden_avg"
             )
+    elif mode == "smart_hidden":
+        model = AutoModelForCausalLM.from_pretrained(
+            model_ref.model.path,
+            revision=model_ref.model.revision,
+            torch_dtype=torch.bfloat16,
+            device_map=device,
+            low_cpu_mem_usage=True,
+            load_in_4bit=load_in_4bit,
+            load_in_8bit=load_in_8bit,
+            trust_remote_code=trust_remote_code,
+        )
+        classifier = load_pretrained_classifier()
+
+        def doit(tokenized):
+            hidden_states = get_hidden_states(model, tokenized=tokenized)
+            routing_probs = classifier.predict_proba(hidden_states.cpu().numpy())
+            routing_probs = torch.from_numpy(routing_probs).to(hidden_states.device)
+
+            # Check and adjust dimensions
+            if routing_probs.shape != (model_cfg.num_hidden_layers, len(experts), model_cfg.hidden_size):
+                if routing_probs.shape[0] != model_cfg.num_hidden_layers:
+                    routing_probs = routing_probs.repeat(model_cfg.num_hidden_layers, 1, 1)[:model_cfg.num_hidden_layers]
+                
+                if routing_probs.shape[1] != len(experts):
+                    raise ValueError(f"Number of experts in classifier output ({routing_probs.shape[1]}) "
+                                     f"doesn't match number of experts ({len(experts)})")
+                
+                if routing_probs.shape[2] != model_cfg.hidden_size:
+                    routing_probs = F.interpolate(routing_probs.unsqueeze(0), 
+                                                  size=(routing_probs.shape[1], model_cfg.hidden_size), 
+                                                  mode='bilinear', 
+                                                  align_corners=False).squeeze(0)
+
+            return routing_probs * hidden_states
+        return doit
+    else:
+        raise ValueError(f"Unknown routing mode: {mode}")
 
     gate_vecs = []
     for expert in tqdm.tqdm(experts, desc="expert prompts"):
