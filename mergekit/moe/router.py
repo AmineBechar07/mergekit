@@ -100,6 +100,18 @@ def get_gate_params(
         return torch.randn(
             (model_cfg.num_hidden_layers, len(experts), model_cfg.hidden_size)
         )
+    elif mode=="approach":
+        num_hidden_layers = model_cfg.num_hidden_layers 
+        num_experts = len(experts)
+        hidden_size = model_cfg.hidden_size
+
+        router_weights = combined_weights.reshape(num_hidden_layers, num_experts, hidden_size)
+        router_biases = combined_biases.reshape(num_hidden_layers, num_experts)
+        
+        router = nn.Linear(hidden_size, num_experts)
+        router.weight.data = router_weights
+        router.bias.data = torch.mean(router_biases, dim=0)
+        return router
     elif mode == "uniform_random":
         in_features = model_cfg.hidden_size
         scale = math.sqrt(1.0 / in_features)
